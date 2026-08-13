@@ -59,7 +59,13 @@ export class ProductionSystem {
     if (!this.canPlaceAt(team, def, gx, gy)) return { ok: false, reason: 'site' };
     if (!this.world.economy.trySpend(team, def.cost)) return { ok: false, reason: 'cost' };
 
-    this.world.spawnStructure(def, team, gx, gy, 0);
+    const structure = this.world.spawnStructure(def, team, gx, gy, 0);
+    if (!structure) {
+      // The world rejected the site after we took payment — give it back
+      // rather than silently burning the agent's coins.
+      this.world.economy.refund(team, def.cost);
+      return { ok: false, reason: 'site' };
+    }
     return { ok: true };
   }
 
@@ -70,6 +76,8 @@ export class ProductionSystem {
 
     for (let y = gy; y < gy + def.fh; y++) {
       for (let x = gx; x < gx + def.fw; x++) {
+        // Rejects water and mountain outright, plus props and non-buildable
+        // biomes. Every tile of the footprint is checked, edges included.
         if (!map.isBuildable(x, y)) return false;
         if (nav.occupantAt(x, y) !== 0) return false;
         // Buildings need level ground.

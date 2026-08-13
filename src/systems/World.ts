@@ -211,10 +211,23 @@ export class World {
 
   /**
    * @param progress 0 starts a construction site; 1 places it complete.
+   * @returns null when the site is illegal.
+   *
+   * The "never on water" rule is enforced here rather than only in
+   * ProductionSystem, so no caller — seeding, a debug helper, or future code —
+   * can put a structure on water or mountain by going around the AI's path.
+   * Every tile of the footprint must qualify, including its edges.
    */
   spawnStructure(
     def: BuildingDef | DefenseDef, team: TeamId, gx: number, gy: number, progress = 1,
-  ): Structure {
+  ): Structure | null {
+    if (!this.map.footprintOnBuildableTerrain(gx, gy, def.fw, def.fh)) {
+      console.warn(
+        `[world] refused ${def.id} at ${gx},${gy}: footprint covers unbuildable terrain`,
+      );
+      return null;
+    }
+
     const sprites = this.sprites.spritesFor(def.id);
     const structure = new Structure(def, team, gx, gy, sprites);
     structure.buildProgress = progress;

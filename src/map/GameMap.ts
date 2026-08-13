@@ -75,6 +75,26 @@ export class GameMap {
     return this.costScale[this.idx(x, y)] / 100;
   }
 
+  /**
+   * Terrain that can never host a structure, whatever else is true of the
+   * tile: water and mountain. Distinct from `isBuildable`, which also rejects
+   * transient obstructions like scatter props.
+   */
+  isTerrainBuildable(x: number, y: number): boolean {
+    if (!this.inBounds(x, y)) return false;
+    return !biomeDef(this.biome[this.idx(x, y)] as Biome).blocksGround;
+  }
+
+  /** True only if every tile of the footprint can host a structure. */
+  footprintOnBuildableTerrain(gx: number, gy: number, fw: number, fh: number): boolean {
+    for (let y = gy; y < gy + fh; y++) {
+      for (let x = gx; x < gx + fw; x++) {
+        if (!this.isTerrainBuildable(x, y)) return false;
+      }
+    }
+    return true;
+  }
+
   isBuildable(x: number, y: number): boolean {
     if (!this.inBounds(x, y)) return false;
     const i = this.idx(x, y);

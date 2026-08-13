@@ -121,9 +121,17 @@ export class Game {
       const hqDef = defOf('commandCenter');
       if (!isBuilding(hqDef)) continue;
 
+      // The spawn area is levelled and drained by the map generator, so the
+      // centred site is normally fine — but fall back to a real site search
+      // rather than trusting that and losing the headquarters.
       const hqX = home.gx - Math.floor(hqDef.fw / 2);
       const hqY = home.gy - Math.floor(hqDef.fh / 2);
-      world.spawnStructure(hqDef, team, hqX, hqY, 1);
+      let hq = world.spawnStructure(hqDef, team, hqX, hqY, 1);
+      if (!hq) {
+        const site = world.production.findBuildSite(team, hqDef, home.gx, home.gy, 14);
+        if (site) hq = world.spawnStructure(hqDef, team, site.gx, site.gy, 1);
+      }
+      if (!hq) throw new Error(`could not place a command center for team ${team}`);
 
       const rigDef = defOf('miningRig');
       if (isBuilding(rigDef)) {
@@ -200,7 +208,11 @@ export class Game {
       /** Drop a unit on the map — for previewing a chassis or staging a shot. */
       spawn: (id: string, team: TeamId, gx: number, gy: number) =>
         this.world.spawnUnit(defOf(id), team, gx, gy),
-      /** Place a completed structure, bypassing cost and site checks. */
+      /**
+       * Place a completed structure, bypassing cost, build radius and prop
+       * checks. It cannot bypass terrain: water and mountain are refused here
+       * exactly as they are for the agents, and this returns null instead.
+       */
       place: (id: string, team: TeamId, gx: number, gy: number) => {
         const def = defOf(id);
         if (!isBuilding(def) && !isDefense(def)) return null;
