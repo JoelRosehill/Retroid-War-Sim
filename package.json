@@ -1,0 +1,22 @@
+{
+  "name": "retroid-war-sim",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "2.5D isometric RTS simulation — two AI agents fight on a procedurally generated map, rendered in early-2000s pixel art.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "pixi.js": "^8.6.6"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^0.68.0",
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5"
+  }
+}
