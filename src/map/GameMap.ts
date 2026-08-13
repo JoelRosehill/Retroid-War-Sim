@@ -22,7 +22,7 @@ export class GameMap {
   /** Metadata carried from the plan for the HUD. */
   name = 'Unnamed Sector';
   summary = '';
-  source: 'llm' | 'procedural' = 'procedural';
+  source: 'authored' | 'procedural' = 'procedural';
 
   spawns: { gx: number; gy: number }[] = [];
 

@@ -10,8 +10,8 @@ npm install
 npm run dev        # http://localhost:5173
 ```
 
-No API key is required — the map generator falls back to a local procedural
-generator. See [Terrain generation](#terrain-generation) to enable the Claude path.
+No API key, no account, no network calls. Maps can be authored by any AI you
+like via a copy-paste prompt — see [Terrain generation](#terrain-generation).
 
 ---
 
@@ -20,10 +20,8 @@ generator. See [Terrain generation](#terrain-generation) to enable the Claude pa
 ```
 retroid-war-sim/
 ├── index.html                     Boot overlay + canvas mount
-├── vite.config.ts                 Vite config; registers the mapgen middleware
+├── vite.config.ts                 Vite config
 ├── tsconfig.json                  Strict TypeScript
-├── server/
-│   └── mapgen.ts                  POST /api/mapgen — Claude-authored biome plans
 └── src/
     ├── main.ts                    Entry point; query-string options
     ├── Game.ts                    App bootstrap, fixed-timestep loop, debug hook
@@ -53,8 +51,10 @@ retroid-war-sim/
     │
     ├── map/
     │   ├── BiomeTypes.ts          8 biomes: movement, cover, buildability
-    │   ├── MapPlan.ts             Wire format shared with the server
-    │   ├── LLMMapClient.ts        Fetches a plan; procedural fallback
+    │   ├── MapPlan.ts             The plan format models are asked to fill in
+    │   ├── MapPrompt.ts           Builds the copy-paste prompt
+    │   ├── PlanValidator.ts       Parses and repairs a pasted plan
+    │   ├── PlanSource.ts          Stored plan, else procedural generator
     │   ├── MapGenerator.ts        Expands a plan into the full-res grid
     │   └── GameMap.ts             Flat typed-array tile storage
     │
@@ -94,7 +94,8 @@ retroid-war-sim/
     │   └── AIController.ts        Decision loop shared by both agents
     │
     └── ui/
-        └── HUD.ts                 Faction readouts, kill feed, clock
+        ├── HUD.ts                 Faction readouts, kill feed, clock
+        └── MapStudio.ts           Copy-prompt / paste-json overlay
 ```
 
 ---
@@ -231,18 +232,37 @@ elevation, carved rivers, scattered props and pre-existing battle damage, then
 guarantees the two spawns are connected by ground — carving a corridor if the
 plan didn't leave one.
 
-The plan comes from **Claude** when an API key is present:
+### Map Studio — author a map with any AI
 
-```bash
-cp .env.example .env       # set ANTHROPIC_API_KEY
-```
+Press **M**. Then:
 
-`server/mapgen.ts` runs server-side only — the key never reaches the browser. It
-requests a coarse matrix under a strict JSON schema (`output_config.format`)
-rather than a full-resolution one, which keeps the response to a few thousand
-tokens while still letting the model author the map's shape. Without a key, an
-equivalent plan is produced locally; the sim is fully playable either way, and
-the HUD says which path was used.
+1. Describe the battlefield you want.
+2. **Copy prompt** — a complete, self-contained prompt lands on your clipboard.
+3. Paste it into whatever model you like: DeepSeek, ChatGPT, Claude, a local
+   model. It's a plain chat message; there is nothing to configure.
+4. Paste the json it gives back into the right-hand box (or drop a `.json` file
+   onto the panel).
+5. **Load map & restart.**
+
+There is no API integration at all — no key, no SDK, no provider lock-in, no
+per-map cost beyond whatever you already pay your model of choice. The plan is
+kept in `localStorage`, so it survives reloads until you clear it with **Use
+procedural**.
+
+**Why the prompt is so explicit.** Pasting into a chat box means nothing
+enforces the schema — no `response_format`, no tool call, no structured output.
+So `MapPrompt.ts` carries the entire contract itself: field list, constraints,
+and a complete worked example. The counterpart is `PlanValidator.ts`, which
+*repairs* rather than rejects, because every model gets small details wrong. It
+handles markdown fences, prose wrapped around the json, trailing commas, rows a
+character short, matrices given as arrays of characters, densities given as
+percentages, unrecognised biome letters, and overlapping spawns. Only two things
+are fatal: not being json at all, and having no biome matrix. Whatever it
+repairs, it tells you.
+
+The procedural generator produces the same plan structure, so the pipeline is
+identical whether a map was authored or generated — and the sim is fully
+playable having never opened Map Studio. The HUD says which is in use.
 
 ---
 
@@ -250,16 +270,18 @@ the HUD says which path was used.
 
 | Key | |
 |---|---|
+| `M` | Open Map Studio (pauses the match) |
 | `Space` | Pause / resume the simulation (camera keeps running) |
 | `1` `2` `3` | Simulation speed ×1 / ×2 / ×4 |
 | `D` | Toggle the debug overlay |
+| `Esc` | Close Map Studio |
 
 Query-string options, so a recording session is reproducible:
 
 ```
 ?seed=1234           fixed seed — same map, same match, every time
 ?format=vertical     9:16 for shorts (also: landscape, square)
-?prompt=...          terrain brief handed to the map generator
+?prompt=...          pre-fills the Map Studio brief
 ```
 
 `window.__retroid` exposes the live simulation for composing shots:
@@ -271,8 +293,11 @@ Query-string options, so a recording session is reproducible:
 ## Scripts
 
 ```bash
-npm run dev          # dev server + /api/mapgen middleware
+npm run dev          # dev server
 npm run build        # typecheck, then production build
 npm run typecheck    # tsc --noEmit
-npm run preview      # serve the build (mapgen middleware included)
+npm run preview      # serve the production build
 ```
+
+The only runtime dependency is `pixi.js`. Everything else — the art, the map
+format, the AI — is in this repo.

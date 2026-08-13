@@ -1,4 +1,10 @@
-/** Wire format shared with `server/mapgen.ts`. */
+/**
+ * The map plan format.
+ *
+ * This is the contract a model is asked to fill in (see `MapPrompt.ts`) and the
+ * input `MapGenerator` expands into the battlefield. Keep it small and
+ * hand-writable: a person should be able to author one in a text editor.
+ */
 
 export interface PlanPoint { x: number; y: number; }
 
@@ -23,7 +29,7 @@ export interface BiomePlan {
 }
 
 export interface MapgenResponse {
-  source: 'llm' | 'procedural';
-  model?: string;
+  /** 'authored' means a plan the user supplied; 'procedural' is the built-in generator. */
+  source: 'authored' | 'procedural';
   plan: BiomePlan;
 }

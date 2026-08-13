@@ -1,53 +1,63 @@
 /**
- * Fetches a biome plan from the server-side Claude endpoint, with a local
- * procedural generator as the fallback.
+ * Where the map plan comes from at boot.
  *
- * The fallback is not a degraded stub — it produces the same plan structure the
- * model does, so the sim is fully playable with no API key. The model's value
- * is authored intent (a river valley, a mountain pass, a coastal strip) rather
- * than raw capability.
+ * Either a plan the user authored elsewhere (pasted into Map Studio and kept in
+ * localStorage), or the built-in procedural generator. There is no network call
+ * and no API key: the model, whichever one you use, is driven by hand through
+ * a copy-pasted prompt.
  */
 import { RNG, ValueNoise } from '../core/RNG';
 import type { BiomePlan, MapgenResponse } from './MapPlan';
+import { normalizePlan } from './PlanValidator';
 
+const STORAGE_KEY = 'retroid.mapPlan';
 const COARSE = 20;
 
-export interface MapRequestOptions {
-  prompt: string;
-  seed: number;
-  /** Abort the request after this many milliseconds and fall back. */
-  timeoutMs?: number;
+interface StoredPlan {
+  plan: BiomePlan;
+  savedAt: number;
 }
 
-export async function requestMapPlan(opts: MapRequestOptions): Promise<MapgenResponse> {
-  const { prompt, seed, timeoutMs = 30000 } = opts;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+/** Persist a plan so the next reload builds the map from it. */
+export function saveStoredPlan(plan: BiomePlan): void {
+  const payload: StoredPlan = { plan, savedAt: Date.now() };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+}
 
+export function clearStoredPlan(): void {
+  localStorage.removeItem(STORAGE_KEY);
+}
+
+export function loadStoredPlan(): BiomePlan | null {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) return null;
   try {
-    const res = await fetch('/api/mapgen', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, seed }),
-      signal: controller.signal,
-    });
-
-    if (res.ok) {
-      const data = (await res.json()) as MapgenResponse;
-      if (data?.plan?.coarse?.rows?.length) return data;
-    }
+    const stored = JSON.parse(raw) as StoredPlan;
+    // Re-normalize on read: the stored plan may predate a schema change.
+    const { plan } = normalizePlan(stored.plan);
+    return plan;
   } catch {
-    // Network error, abort, or no server — fall through to the local generator.
-  } finally {
-    clearTimeout(timer);
+    clearStoredPlan();
+    return null;
   }
+}
 
+export function hasStoredPlan(): boolean {
+  return localStorage.getItem(STORAGE_KEY) !== null;
+}
+
+/** Resolve the plan for this run. Synchronous — nothing to await. */
+export function resolveMapPlan(seed: number): MapgenResponse {
+  const stored = loadStoredPlan();
+  if (stored) return { source: 'authored', plan: stored };
   return { source: 'procedural', plan: proceduralPlan(seed) };
 }
 
 /**
- * Deterministic stand-in for the model: layered noise picks biomes by
- * elevation and moisture, then ridges, a river and spawns are placed.
+ * Deterministic stand-in for an authored map: layered noise picks biomes by
+ * elevation and moisture, then ridges, a river and spawns are placed. Produces
+ * the same plan structure a model does, so the rest of the pipeline is
+ * identical either way.
  */
 export function proceduralPlan(seed: number): BiomePlan {
   const rng = new RNG(seed);
@@ -97,12 +107,9 @@ export function proceduralPlan(seed: number): BiomePlan {
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
     const wobble = Math.sin(t * Math.PI * 2 + seed) * 0.12 + rng.range(-0.05, 0.05);
-    riverPoints.push(riverVertical
-      ? { x: 0.5 + wobble, y: t }
-      : { x: t, y: 0.5 + wobble });
+    riverPoints.push(riverVertical ? { x: 0.5 + wobble, y: t } : { x: t, y: 0.5 + wobble });
   }
 
-  // Spawns on opposite corners, pulled in from the edge.
   const flip = rng.bool();
   const spawns = flip
     ? { alpha: { x: 0.14, y: 0.16 }, bravo: { x: 0.86, y: 0.84 } }

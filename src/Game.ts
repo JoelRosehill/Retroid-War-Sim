@@ -9,7 +9,8 @@ import { Application, Container, TextureStyle } from 'pixi.js';
 import { MAP_SIZE, MAX_CATCHUP_TICKS, SIM_DT, TEAMS, type TeamId } from './core/Config';
 import { SpriteLibrary, type ProgressFn } from './render/SpriteLibrary';
 import { TerrainRenderer } from './render/TerrainRenderer';
-import { requestMapPlan } from './map/LLMMapClient';
+import { resolveMapPlan } from './map/PlanSource';
+import { MapStudio } from './ui/MapStudio';
 import { generateMap } from './map/MapGenerator';
 import { World } from './systems/World';
 import { AIController } from './ai/AIController';
@@ -44,6 +45,9 @@ export class Game {
   private accumulator = 0;
   private running = false;
   private simSpeed = 1;
+  private studio!: MapStudio;
+  /** Set while Map Studio is open, so closing it doesn't resume a paused match. */
+  private pausedByStudio = false;
 
   async start(opts: GameOptions): Promise<void> {
     // Nearest-neighbour everywhere: this is a pixel-art project, and bilinear
@@ -71,10 +75,8 @@ export class Game {
     opts.onProgress(0, 1, 'baking sprites');
     const sprites = await SpriteLibrary.bake(opts.seed, opts.onProgress);
 
-    opts.onProgress(1, 1, 'requesting terrain');
-    const response = await requestMapPlan({ prompt: opts.prompt, seed: opts.seed });
-
     opts.onProgress(1, 1, 'generating terrain');
+    const response = resolveMapPlan(opts.seed);
     const map = generateMap({
       size: MAP_SIZE,
       seed: opts.seed,
@@ -103,6 +105,18 @@ export class Game {
 
     // Open on a wide establishing shot of the whole battlefield.
     this.world.camera.snapTo(MAP_SIZE / 2, MAP_SIZE / 2, 0.6);
+
+    // Map Studio drives the copy-prompt / paste-json workflow.
+    this.studio = new MapStudio(opts.prompt);
+    this.studio.onVisibilityChange = (open) => {
+      if (open) {
+        this.pausedByStudio = this.running;
+        this.running = false;
+      } else if (this.pausedByStudio) {
+        this.pausedByStudio = false;
+        this.running = true;
+      }
+    };
 
     this.bindControls();
     this.exposeDebugHandle();
@@ -223,14 +237,24 @@ export class Game {
 
   private bindControls(): void {
     window.addEventListener('keydown', (event) => {
+      // Never steal keystrokes from Map Studio's text fields.
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT')) {
+        if (event.key === 'Escape') this.studio.hide();
+        return;
+      }
+
       switch (event.key) {
         case ' ':
           this.running = !this.running;
+          this.pausedByStudio = false;
           event.preventDefault();
           break;
         case '1': this.simSpeed = 1; break;
         case '2': this.simSpeed = 2; break;
         case '3': this.simSpeed = 4; break;
+        case 'm': case 'M': this.studio.toggle(); break;
+        case 'Escape': this.studio.hide(); break;
         default: break;
       }
     });

@@ -151,9 +151,9 @@ export class HUD {
     this.clock.text = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 
     this.mapLabel.text = world.map.name.toUpperCase();
-    this.sourceLabel.text = world.map.source === 'llm'
-      ? 'TERRAIN AUTHORED BY CLAUDE'
-      : 'TERRAIN PROCEDURALLY GENERATED';
+    this.sourceLabel.text = world.map.source === 'authored'
+      ? 'AUTHORED TERRAIN — PRESS M FOR MAP STUDIO'
+      : 'PROCEDURAL TERRAIN — PRESS M FOR MAP STUDIO';
 
     for (const team of [0, 1] as TeamId[]) {
       const panel = this.panels[team];

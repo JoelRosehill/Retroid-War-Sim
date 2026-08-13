@@ -17,7 +17,7 @@ export interface GenerateOptions {
   size: number;
   seed: number;
   plan: BiomePlan;
-  source: 'llm' | 'procedural';
+  source: 'authored' | 'procedural';
 }
 
 export function generateMap(opts: GenerateOptions): GameMap {
